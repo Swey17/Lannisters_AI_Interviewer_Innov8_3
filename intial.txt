@@ -1,0 +1,45 @@
+dsa_topics = [
+    # Level 1: Language Fundamentals
+    "Variables & Data Types",
+    "Operators",
+    "Control Flow (If-Else, Switch)",
+    "Loops (For, While)",
+    "Functions / Methods",
+    "Basic Input & Output",
+    
+    # Level 2: Foundational Data Structures
+    "Big O Notation (Time & Space Complexity)",
+    "Arrays / Lists",
+    "Strings",
+    "Linked Lists (Singly, Doubly, Circular)",
+    "Stacks",
+    "Queues",
+    
+    # Level 3: Core Algorithms & Non-Linear Structures
+    "Hash Tables (Hash Maps)",
+    "Trees (Binary Trees, Binary Search Trees)",
+    "Tree Traversals (In-order, Pre-order, Post-order)",
+    "Heaps & Priority Queues",
+    "Basic Searching (Linear Search, Binary Search)",
+    "Basic Sorting (Bubble Sort, Selection Sort, Insertion Sort)",
+    "Recursion",
+    
+    # Level 4: Advanced Structures & Paradigms
+    "Graphs",
+    "Graph Representations (Adjacency Matrix, Adjacency List)",
+    "Graph Traversals (Breadth-First Search, Depth-First Search)",
+    "Efficient Sorting (Merge Sort, Quick Sort)",
+    "Backtracking",
+    "Greedy Algorithms",
+    "Dynamic Programming (Introduction)",
+    
+    # Level 5: Specialized & Competitive Topics
+    "Advanced Dynamic Programming",
+    "Advanced Graph Algorithms",
+    "Shortest Path Algorithms (Dijkstra's, Floyd-Warshall)",
+    "Minimum Spanning Tree (Prim's, Kruskal's)",
+    "Tries (Prefix Trees)",
+    "Segment Trees",
+    "Fenwick Trees (Binary Indexed Trees)",
+    "Disjoint Set Union (DSU)",
+]
