@@ -9,6 +9,9 @@ from faster_whisper import WhisperModel
 import subprocess
 import os
 import pickle
+import threading
+import time
+
 
 f = open('gemini_api.pkl', 'rb')
 MY_API_KEY = pickle.load(f)
@@ -222,6 +225,52 @@ code_col = st.sidebar.text_area(
     label_visibility="collapsed"
 )
 
+
+def monitoring_bot():
+    
+    OLD = ""
+    while True:
+        final_prompt = f"""You are an AI Tech Interviewer, Based on history of responses
+        You are called for checking the code written by user and you may intervene if user is going wrong way.
+        And This is the Code Window with old code-
+        '{OLD}'
+        
+        And This is the Code Window with changes
+        '{st.session_state.code_content}'
+        Based on the code changes and the history of responses, you may intervene if user is going wrong way or you may choose to wait for user to complete or if he is going wrong way then you may give him any hint
+        History of responses: '{history}'
+        
+        For intervention strictly just return 0 followed by your response or hint else just return -1"""
+
+        OLD = st.session_state.code_content
+        
+        response = gemini_response(final_prompt)
+        if response[0] == '0':
+            response = response[1:response.find("```")]
+            st.session_state.messages.append({"role": "assistant", "content": response})
+            history.append({"role": "assistant", "content": response})
+            st.experimental_rerun()
+        else:
+            print("No intervention needed")
+            # So changes will be suggested
+
+
+        time.sleep(10)
+
+
+        n += 1
+
+
+if "thread_started" not in st.session_state:
+    st.session_state.thread_started = True
+    
+    # Create and start the background thread
+    # daemon=True means the thread will be killed when the main script stops
+    thread = threading.Thread(target=monitoring_bot, daemon=True)
+    thread.start()
+    print("🚀 Background saving thread started.")
+
+
 with chat_col:
     st.header("Chat")
     # Display all history messages
@@ -274,10 +323,14 @@ def phraser(user_response):
     Response Must only contain One code block if any code is to be shared.
     Put normal text outside the code block.
     Strictly ask the user to write code , and avoid theoretical questions.
+
+    You may be given code while user is writing code and you may choose to intervene or wait for user to complete or if he is going wrong way then you may give him any hint
+    For intervention strictly just return 0
 """
     return text
 
 history = [f"Preferred Language - {st.session_state.messages[0]['content']}"]
+
 
 if prompt:
     # 1. Simulate an LLM response (THIS IS WHERE YOU'D CALL YOUR BACKEND)
