@@ -27,7 +27,7 @@ SCORE = []
 f = open('exception_commands.bin', 'rb')
 VULN_KEYS = pickle.load(f)
 f.close()
-whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
+whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
 
 
 def security_check_ifsafe(code, lang):
@@ -120,17 +120,18 @@ def run_cpp_code(code):
     return output
 
 
-def transcribe_audio(audio_file_path: str):
-        try:
-            segments, info = whisper_model.transcribe(audio_file_path)
-            transcript = ""
-            for segment in segments:
-                segment_text = segment.text.strip()
-                transcript += segment_text + " "
-            print(f"Transcription complete", transcript.strip())
-            return transcript.strip()
-        except Exception as e:
-            print(f"Audio transcription failed: {e}")
+def transcribe_audio():
+    print("Transcribing audio...")
+    try:
+        segments, info = whisper_model.transcribe("temp_audio.wav", language="en", beam_size=5)
+        transcript = ""
+        for segment in segments:
+            segment_text = segment.text.strip()
+            transcript += segment_text + " "
+        print(f"Transcription complete", "-",transcript.strip())
+        return transcript.strip()
+    except Exception as e:
+        print(f"Audio transcription failed: {e}")
 
 def convert_webm_to_wav(webm_bytes):
     """Converts audio from webm bytes to wav bytes."""
@@ -145,21 +146,9 @@ def convert_webm_to_wav(webm_bytes):
     
 
 def gemini_response(prompt_text):
-
     response = model.generate_content(prompt_text)
-
     return response.text 
 
-def gemini_process_audio_and_text(prompt_text, audio_bytes, mime_type="audio/wav"):
-    audio_file = {
-        'mime_type': mime_type,
-        'data': audio_bytes
-    }
-    try:
-        response = model.generate_content([prompt_text, audio_file])
-        return response.text
-    except Exception as e:
-        return f"An error occurred: {e}"
 
 st.set_page_config(
     page_title="Lanister - AI Interviewer",
@@ -196,10 +185,9 @@ st.markdown("""
 
 @st.cache_data
 def text_to_speech(text):
-
     try:
         audio_fp = io.BytesIO()
-        tts = gTTS(text=text, lang='en')
+        tts = gTTS(text=text, lang='en', slow=False)
         tts.write_to_fp(audio_fp)
         audio_fp.seek(0)
         return audio_fp.read()
@@ -261,15 +249,6 @@ def monitoring_bot():
         n += 1
 
 
-if "thread_started" not in st.session_state:
-    st.session_state.thread_started = True
-    
-    # Create and start the background thread
-    # daemon=True means the thread will be killed when the main script stops
-    thread = threading.Thread(target=monitoring_bot, daemon=True)
-    thread.start()
-    print("🚀 Background saving thread started.")
-
 
 with chat_col:
     st.header("Chat")
@@ -285,11 +264,13 @@ with chat_col:
 
     st.markdown("---")
     st.markdown("#### Input by Speech")
-    audio_info = mic_recorder(
-        start_prompt="Speak 🎙️",
-        stop_prompt="Recording... Stop ⏹️",
-        key='speech_input'
-    )
+    # audio_info = mic_recorder(
+    #     start_prompt="Speak 🎙️",
+    #     stop_prompt="Stop ⏹️",
+    #     key='speech_input'
+    # )
+
+    audio = st.audio_input("Speak")      
 
     prompt = st.chat_input("Respond here...")
 
@@ -331,20 +312,20 @@ def phraser(user_response):
 
 history = [f"Preferred Language - {st.session_state.messages[0]['content']}"]
 
-
-if prompt:
-    # 1. Simulate an LLM response (THIS IS WHERE YOU'D CALL YOUR BACKEND)
+if audio:
+    # Audio simulated input
     with st.spinner("Thinking..."):
-        if audio_info and audio_info['bytes']:
-            audio_wav = convert_webm_to_wav(audio_info['bytes'])
-            user_final = gemini_process_audio_and_text(prompt_text="Just give its transcription", audio_bytes=audio_wav)
-        else:
-            user_final = prompt
+
+        with open("temp_audio.wav", "wb") as f:
+            f.write(audio.getbuffer())
+        st.success("Audio recorded and saved successfully!")
+
+        user_final = transcribe_audio()
 
         st.session_state.messages.append({"role": "user", "content": prompt})
-        
         final_prompt = phraser(user_response=user_final)
         gemini_response_text = gemini_response(final_prompt)
+
 
         if gemini_response_text[0] == '1':
             if LEVEL==5:
@@ -371,16 +352,6 @@ if prompt:
             history.append({"role": "user", "content": user_final})
             history.append({"role": "assistant", "content": gemini_response_text})
 
-        ##################################
-        # else:
-        #     st.session_state.messages.append({"role": "user", "content": prompt})
-        #     final_prompt = phraser(user_response=prompt)
-        #     gemini_response_text = gemini_response(final_prompt)
-        #     response = gemini_response_text[0:gemini_response_text.find(";;;")]
-        #     code = gemini_response_text[gemini_response_text.find(";;;")+3:gemini_response_text.rfind(";;;")]
-        #     if code.strip():  
-        #         st.session_state.code_content = f"\n# Q: {prompt}\n{code}\n"
-        #     st.session_state.messages.append({"role": "assistant", "content": response})
 
         REMAINING_QUESTIONS -= 1
         if REMAINING_QUESTIONS <= 0:
@@ -388,8 +359,59 @@ if prompt:
             st.session_state.messages.append({"role": "assistant", "content": f"Interview Over! Your total  SCORE is {total_score} out of {10*LEVEL*2}."})
             prompt = None  
 
-        print(sum(SCORE), LEVEL, REMAINING_QUESTIONS)
+        st.rerun()
+if prompt:
+    # 1. Simulate an LLM response (THIS IS WHERE YOU'D CALL YOUR BACKEND)
+    with st.spinner("Thinking..."):
+        user_final = prompt
+
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        final_prompt = phraser(user_response=user_final)
+        gemini_response_text = gemini_response(final_prompt)
+
+
+        if gemini_response_text[0] == '1':
+            if LEVEL==5:
+                SCORE.append(LEVEL*2)
+            else:
+                SCORE.append(LEVEL*2)
+                LEVEL += 1
+            history = [f"Preferred Language - {st.session_state.messages[0]['content']}"]
+        elif gemini_response_text[0] == '-1':
+            if LEVEL==1:
+                SCORE.append(0)
+            else:
+                LEVEL -= 1
+                SCORE.append(0)
+            history = [f"Preferred Language - {st.session_state.messages[0]['content']}"]
+
+        else:
+            response = gemini_response_text[0:gemini_response_text.find("```")]
+            code = gemini_response_text[gemini_response_text.find("```")+3:gemini_response_text.rfind("```")]
+            if code.strip():  
+                st.session_state.code_content = code.strip()
+
+            st.session_state.messages.append({"role": "assistant", "content": response})
+            history.append({"role": "user", "content": user_final})
+            history.append({"role": "assistant", "content": gemini_response_text})
+
+        REMAINING_QUESTIONS -= 1
+        if REMAINING_QUESTIONS <= 0:
+            total_score = sum(SCORE)
+            st.session_state.messages.append({"role": "assistant", "content": f"Interview Over! Your total  SCORE is {total_score} out of {10*LEVEL*2}."})
+            prompt = None  
+
     # Rerun the app to display the new messages and updated code
     st.rerun()
 
+
+
+'''
+if "thread_started" not in st.session_state and False:
+    st.session_state.thread_started = True
+    # daemon thread so that it stops when main app stops
+    thread = threading.Thread(target=monitoring_bot, daemon=True)
+    thread.start()
+    print("🚀 Background saving thread started.")
+'''
 
