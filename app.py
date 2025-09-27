@@ -5,19 +5,129 @@ from streamlit_mic_recorder import mic_recorder
 import google.generativeai as genai
 import pickle
 from pydub import AudioSegment
-
+from faster_whisper import WhisperModel
+import subprocess
+import os
+import pickle
 
 f = open('gemini_api.pkl', 'rb')
-my_api_key = pickle.load(f)
+MY_API_KEY = pickle.load(f)
 f.close()
-genai.configure(api_key=my_api_key)
+genai.configure(api_key=MY_API_KEY)
 model = genai.GenerativeModel('gemini-2.5-flash')
-level = 2
-remaining_questions = 3
+LEVEL = 2
+REMAINING_QUESTIONS = 3
 ft = open('topics.bin', 'rb')
 topics = pickle.load(ft)
 ft.close()
-score = []
+SCORE = []
+f = open('exception_commands.bin', 'rb')
+VULN_KEYS = pickle.load(f)
+f.close()
+whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
+
+
+def security_check_ifsafe(code, lang):
+    for key in VULN_KEYS[lang]:
+        if key in code:
+            return  False
+    return True
+
+def run_code(code):
+    output = ""
+    if security_check_ifsafe(code, 'python'):
+        try:
+            with open("temp_script.py", "w") as f:
+                f.write(code)
+            
+            result = subprocess.run(
+                ['.\\python\\python.exe', 'temp_script.py'],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            output = result.stdout + result.stderr
+        # if an error occurs then it produces the error in the frontend terminal
+        except Exception as e:
+            output = str(e)
+        finally:
+            # Deleting temp files
+            if os.path.exists("temp_script.py"):
+                os.remove("temp_script.py")
+    else:
+        output = "Access Denied"
+            
+    return output
+
+
+def install_package(package_name: str):
+    if not package_name or not package_name.isalnum():
+        return -1
+    # Running cmd commands
+    try:
+        result = subprocess.run(
+            ['pip', 'install', package_name],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        log = result.stdout + result.stderr
+        success = result.returncode == 0
+        return log, True
+    except Exception as e:
+        return str(e), False
+
+def run_cpp_code(code):
+    output = ""
+    if security_check_ifsafe(code, 'cpp'):
+        cpp_filename = "temp_script.cpp"
+        executable_filename = "temp_executable"
+        try:
+            # code in file with gcc extension
+            with open(cpp_filename, "w") as f:
+                f.write(code)
+            compile_result = subprocess.run(
+                ['g++.exe', cpp_filename, '-o', executable_filename],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if compile_result.returncode != 0:
+                output = compile_result.stderr
+            else:
+                # if no error
+                run_result = subprocess.run(
+                    [f'./{executable_filename}'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                output = run_result.stdout + run_result.stderr
+
+        except Exception as e:
+            output = str(e)
+        finally:
+            # Deleting compiled and base code after getting output
+            if os.path.exists(cpp_filename):
+                os.remove(cpp_filename)
+            if os.path.exists(executable_filename):
+                os.remove(executable_filename)
+    else:
+        output = "Access Denied"
+    return output
+
+
+def transcribe_audio(audio_file_path: str):
+        try:
+            segments, info = whisper_model.transcribe(audio_file_path)
+            transcript = ""
+            for segment in segments:
+                segment_text = segment.text.strip()
+                transcript += segment_text + " "
+            print(f"Transcription complete", transcript.strip())
+            return transcript.strip()
+        except Exception as e:
+            print(f"Audio transcription failed: {e}")
 
 def convert_webm_to_wav(webm_bytes):
     """Converts audio from webm bytes to wav bytes."""
@@ -29,6 +139,7 @@ def convert_webm_to_wav(webm_bytes):
     except Exception as e:
         print(f"Error converting audio: {e}")
         return None
+    
 
 def gemini_response(prompt_text):
 
@@ -144,11 +255,11 @@ def phraser(user_response):
     
     Topics are - {topics}
 
-    ask user level {level} question.
+    ask user LEVEL {LEVEL} question.
 ]
     You have to ask a total of 10 independent questions from the above list.
-    if the user is not able to answer then you can go to one level less.
-    If the user is able to answer then you can go to level 3 and so on
+    if the user is not able to answer then you can go to one LEVEL less.
+    If the user is able to answer then you can go to LEVEL 3 and so on
     
     And This is the Code Window -
     '{st.session_state.code_content}'
@@ -159,7 +270,7 @@ def phraser(user_response):
 
     And If a Question is completely answered by the user then say strictly say -> 1
     If the user is  completely clueless (cannot answer in 3 tries or followups )then say strictly say -> give -1
-    And if followup question is about to be asked then just ask the followup question and dont give any score.
+    And if followup question is about to be asked then just ask the followup question and dont give any SCORE.
     Response Must only contain One code block if any code is to be shared.
     Put normal text outside the code block.
     Strictly ask the user to write code , and avoid theoretical questions.
@@ -183,18 +294,18 @@ if prompt:
         gemini_response_text = gemini_response(final_prompt)
 
         if gemini_response_text[0] == '1':
-            if level==5:
-                score.append(level*2)
+            if LEVEL==5:
+                SCORE.append(LEVEL*2)
             else:
-                score.append(level*2)
-                level += 1
+                SCORE.append(LEVEL*2)
+                LEVEL += 1
             history = [f"Preferred Language - {st.session_state.messages[0]['content']}"]
         elif gemini_response_text[0] == '-1':
-            if level==1:
-                score.append(0)
+            if LEVEL==1:
+                SCORE.append(0)
             else:
-                level -= 1
-                score.append(0)
+                LEVEL -= 1
+                SCORE.append(0)
             history = [f"Preferred Language - {st.session_state.messages[0]['content']}"]
 
         else:
@@ -218,13 +329,13 @@ if prompt:
         #         st.session_state.code_content = f"\n# Q: {prompt}\n{code}\n"
         #     st.session_state.messages.append({"role": "assistant", "content": response})
 
-        remaining_questions -= 1
-        if remaining_questions <= 0:
-            total_score = sum(score)
-            st.session_state.messages.append({"role": "assistant", "content": f"Interview Over! Your total score is {total_score} out of {10*level*2}."})
+        REMAINING_QUESTIONS -= 1
+        if REMAINING_QUESTIONS <= 0:
+            total_score = sum(SCORE)
+            st.session_state.messages.append({"role": "assistant", "content": f"Interview Over! Your total  SCORE is {total_score} out of {10*LEVEL*2}."})
             prompt = None  
 
-        print(sum(score), level, remaining_questions)
+        print(sum(SCORE), LEVEL, REMAINING_QUESTIONS)
     # Rerun the app to display the new messages and updated code
     st.rerun()
 
